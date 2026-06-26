@@ -33,7 +33,8 @@ MINIO_CLIENT = Minio(
     MINIO_ENDPOINT,
     access_key=MINIO_ACCESS_KEY,
     secret_key=MINIO_SECRET_KEY,
-    secure=True if IS_PRODUCTION else False
+    secure=True if IS_PRODUCTION else False,
+    region="eu-central-1" if IS_PRODUCTION else None
 )
 
 try:
