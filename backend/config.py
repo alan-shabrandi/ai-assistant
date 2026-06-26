@@ -22,10 +22,10 @@ else:
     DEFAULT_DIMENSION = 768
     AI_MODEL_NAME = "my-qwen3"
     
-MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000")
-MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
-MINIO_BUCKET_NAME = os.getenv("MINIO_BUCKET_NAME", "pdf-bucket")
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT")
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
+MINIO_BUCKET_NAME = os.getenv("MINIO_BUCKET_NAME")
 
 MINIO_CLIENT = Minio(
     MINIO_ENDPOINT,
