@@ -16,6 +16,7 @@ export default function ChatArea({ sessionId }: ChatAreaProps) {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -147,6 +148,67 @@ export default function ChatArea({ sessionId }: ChatAreaProps) {
     }
   };
 
+  const handleFileUpload = async (file: File) => {
+    const isUserLogged = localStorage.getItem("user_logged_in") === "true";
+    if (!isUserLogged) {
+      router.push("/login");
+      return;
+    }
+
+    setUploading(true);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const systemNotification: Message = {
+      role: "assistant",
+      content: `⏳ در حال آپلود و پردازش فایل "${file.name}"... لطفاً شکیبا باشید.`,
+    };
+    setMessages((prev) => [...prev, systemNotification]);
+
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/documents/upload`,
+        {
+          method: "POST",
+          credentials: "include",
+          body: formData,
+        },
+      );
+
+      if (response.status === 401) {
+        localStorage.removeItem("user_logged_in");
+        router.push("/login");
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error("آپلو فایل با خطا مواجه شد.");
+      }
+
+      const data = await response.json();
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `✅ فایل "${file.name}" با موفقیت بارگذاری و پردازش شد (${data.chunks_count} بخش استخراج گردید). اکنون می‌توانید سوالات خود را درباره این سند بپرسید.`,
+        },
+      ]);
+    } catch (error: any) {
+      console.error(error);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `❌ خطا در پردازش فایل: ${error.message || "مشکلی پیش آمده است."}`,
+        },
+      ]);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="flex h-[calc(100vh-64px)] flex-col">
       <div className="flex-1 overflow-y-auto">
@@ -167,7 +229,12 @@ export default function ChatArea({ sessionId }: ChatAreaProps) {
         </div>
       </div>
 
-      <ChatInput loading={loading} onSend={handleSend} />
+      <ChatInput
+        loading={loading}
+        onSend={handleSend}
+        onFileUpload={handleFileUpload}
+        uploading={uploading}
+      />
     </div>
   );
 }

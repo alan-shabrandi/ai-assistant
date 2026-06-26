@@ -30,12 +30,18 @@ async def chat(
         print(f"Error saving user message: {e}")
 
     relevant_chunks = vector_store.search(request.message, top_k=3)
-    context = "\n---\n".join(relevant_chunks)
+    context_items = []
+    for chunk in relevant_chunks:
+        clean_name = chunk['file_name'].split('_', 1)[-1] if chunk['file_name'] else "Unknown Source"
+        context_items.append(f"[Source File: {clean_name}]\n{chunk['content']}")
+        
+    context = "\n---\n".join(context_items)
     
     system_prompt = (
         "You are an intelligent assistant. Use the following pieces of retrieved context to answer the user's question. "
         "If you don't know the answer or if it's not present in the context, just say that you don't know, "
-        "do not try to make up an answer. Keep the answer concise and respond in the same language as the context/question (Persian).\n\n"
+        "do not try to make up an answer. Keep the answer concise. At the end of your response, "
+        "always mention the name of the source file(s) you used to answer the question.\n\n"
         f"Context:\n{context}"
     )
 

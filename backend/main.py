@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import auth, chat
+from routers import auth, chat, document
 from vector_store import SimpleVectorStore
 
 @asynccontextmanager
@@ -41,3 +41,4 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(chat.router)
+app.include_router(document.router)

@@ -15,6 +15,11 @@ interface ChatMessageProps {
 export default function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === "user";
 
+  const isSystemStatus =
+    message.content.startsWith("⏳") ||
+    message.content.startsWith("✅") ||
+    message.content.startsWith("❌");
+
   return (
     <div
       className={cn(
@@ -34,11 +39,14 @@ export default function ChatMessage({ message }: ChatMessageProps) {
         className={cn(
           "max-w-[80%] rounded-2xl border px-4 py-3 shadow-none",
           "transition-colors",
-
-          isUser ? "bg-primary text-primary-foreground" : "bg-muted",
+          isUser
+            ? "bg-primary text-primary-foreground"
+            : isSystemStatus
+              ? "bg-yellow-50/50 dark:bg-yellow-950/20 border-yellow-200 dark:border-yellow-900/50 text-foreground"
+              : "bg-muted",
         )}
       >
-        <p className="whitespace-pre-wrap break-words text-sm leading-7">
+        <p className="whitespace-pre-wrap wrap-break-word text-sm leading-7 dir-rtl text-right">
           {message.content}
         </p>
       </Card>

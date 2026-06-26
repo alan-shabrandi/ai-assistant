@@ -2,12 +2,13 @@ import psycopg2
 from psycopg2.extras import execute_values
 from pypdf import PdfReader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from io import BytesIO
 
 from config import DATABASE_URL, AI_CLIENT, EMBEDDING_MODEL, DEFAULT_DIMENSION
 
 
-def extract_and_chunk_pdf(file_path: str, chunk_size: int = 600, chunk_overlap: int = 100) -> list[str]:
-    reader = PdfReader(file_path)
+def extract_and_chunk_pdf(file_stream: BytesIO, chunk_size: int = 600, chunk_overlap: int = 100) -> list[str]:
+    reader = PdfReader(file_stream)
     full_text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
             
     text_splitter = RecursiveCharacterTextSplitter(
@@ -33,6 +34,7 @@ class SimpleVectorStore:
                 cur.execute(f"""
                     CREATE TABLE IF NOT EXISTS documents (
                         id SERIAL PRIMARY KEY,
+                        file_name VARCHAR(255),
                         content TEXT,
                         embedding vector({self.dimension})
                     );
@@ -66,7 +68,7 @@ class SimpleVectorStore:
         )
         return response.data[0].embedding
 
-    def add_documents(self, chunks: list[str]):
+    def add_documents(self, chunks: list[str], file_name: str):
         if not chunks:
             return
             
@@ -75,7 +77,7 @@ class SimpleVectorStore:
             for chunk in chunks:
                 try:
                     emb = self.get_embedding(chunk)
-                    data_to_insert.append((chunk, emb))
+                    data_to_insert.append((file_name, chunk, emb))
                 except Exception as e:
                     print(f"Error generating embedding for chunk: {e}")
                     continue
@@ -84,11 +86,11 @@ class SimpleVectorStore:
                 with conn.cursor() as cur:
                     execute_values(
                         cur,
-                        "INSERT INTO documents (content, embedding) VALUES %s",
+                        "INSERT INTO documents (file_name, content, embedding) VALUES %s",
                         data_to_insert
                     )
                 conn.commit()
-                print(f"Successfully indexed {len(data_to_insert)} chunks.")
+                print(f"Successfully indexed {len(data_to_insert)} chunks for file {file_name}.")
 
     def search(self, query: str, top_k: int = 3) -> list[str]:
         query_emb = self.get_embedding(query)
@@ -97,14 +99,14 @@ class SimpleVectorStore:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT content FROM documents 
+                    SELECT content, file_name FROM documents 
                     ORDER BY embedding <=> %s::vector 
                     LIMIT %s;
                     """,
                     (query_emb, top_k)
                 )
                 rows = cur.fetchall()
-        return [row[0] for row in rows]
+        return [{"content": row[0], "file_name": row[1]} for row in rows]
     
     def save_message(self, session_id: str, username: str, role: str, content: str):
         with self._get_connection() as conn:
