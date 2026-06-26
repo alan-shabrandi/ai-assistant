@@ -30,9 +30,7 @@ MINIO_BUCKET_NAME = os.getenv("MINIO_BUCKET_NAME")
 IS_PRODUCTION = MINIO_ENDPOINT and "supabase" in MINIO_ENDPOINT.lower()
 
 if IS_PRODUCTION:
-    clean_endpoint = MINIO_ENDPOINT.replace("https://", "").replace("http://", "")
-    if not clean_endpoint.endswith("/storage/v1/s3"):
-        clean_endpoint = clean_endpoint.rstrip("/") + "/storage/v1/s3"
+    clean_endpoint = MINIO_ENDPOINT.replace("https://", "").replace("http://", "").split("/")[0]
 else:
     clean_endpoint = MINIO_ENDPOINT.replace("https://", "").replace("http://", "").split("/")[0]
 
@@ -43,6 +41,11 @@ MINIO_CLIENT = Minio(
     secure=True if IS_PRODUCTION else False,
     region="eu-central-1" if IS_PRODUCTION else None
 )
+
+if IS_PRODUCTION:
+    MINIO_CLIENT._base_url.is_aws = False
+    MINIO_CLIENT._base_url.bucket_path = lambda bucket_name: f"/storage/v1/s3/{bucket_name}"
+    MINIO_CLIENT._base_url.object_path = lambda bucket_name, object_name: f"/storage/v1/s3/{bucket_name}/{object_name}"
 
 try:
     if not IS_PRODUCTION:
