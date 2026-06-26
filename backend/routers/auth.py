@@ -47,5 +47,5 @@ async def login(response: Response, form_data: OAuth2PasswordRequestForm = Depen
 
 @router.post("/logout")
 async def logout(response: Response):
-    # response.delete_cookie(key=COOKIE_NAME, path="/")
+    response.delete_cookie(key=COOKIE_NAME, path="/")
     return {"message": "Logged out successfully"}

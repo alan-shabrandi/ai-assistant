@@ -1,14 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, useParams } from "next/navigation"; // اضافه شدن useParams برای تشخیص چت فعال
+import { useRouter, useParams } from "next/navigation";
 import { MessageSquare, Plus, Settings } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-
-// تعریف ساختار داده‌ای هر چت در سایدبار
 interface ChatSession {
   session_id: string;
   title: string;
@@ -17,11 +15,10 @@ interface ChatSession {
 export default function Sidebar() {
   const router = useRouter();
   const params = useParams();
-  const currentSessionId = params.id as string; // آیدی چتی که الان کاربر در آن قرار دارد
+  const currentSessionId = params.id as string;
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);
 
-  // ۱. دریافت لیست چت‌ها از بک‌اند به محض لود شدن سایدبار
   useEffect(() => {
     const fetchSessions = async () => {
       const isUserLogged = localStorage.getItem("user_logged_in") === "true";

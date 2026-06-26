@@ -23,27 +23,33 @@ export default function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const isActionDisabled = loading || uploading;
+
   useEffect(() => {
-    if (!textareaRef.current) return;
-    textareaRef.current.style.height = "0px";
-    textareaRef.current.style.height = textareaRef.current.scrollHeight + "px";
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
   }, [message]);
 
   const handleSend = () => {
     const text = message.trim();
-    if (!text || loading || uploading) return;
+    if (!text || isActionDisabled) return;
 
     onSend(text);
     setMessage("");
 
     requestAnimationFrame(() => {
       if (textareaRef.current) {
-        textareaRef.current.style.height = "56px";
+        textareaRef.current.style.height = "auto";
       }
     });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.nativeEvent.isComposing) return;
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -72,7 +78,7 @@ export default function ChatInput({
             onChange={handleFileChange}
             accept=".pdf"
             className="hidden"
-            disabled={loading || uploading}
+            disabled={isActionDisabled}
           />
 
           <Button
@@ -80,8 +86,8 @@ export default function ChatInput({
             size="icon"
             variant="ghost"
             onClick={triggerFileSelect}
-            disabled={loading || uploading}
-            className="h-10 w-10 rounded-full shrink-0"
+            disabled={isActionDisabled}
+            className="h-10 w-10 shrink-0 rounded-full cursor-pointer"
           >
             <Paperclip
               className={`h-5 w-5 ${uploading ? "animate-pulse text-muted-foreground" : ""}`}
@@ -92,7 +98,7 @@ export default function ChatInput({
             ref={textareaRef}
             rows={1}
             autoFocus
-            disabled={loading || uploading}
+            disabled={isActionDisabled}
             value={message}
             placeholder={
               uploading
@@ -117,8 +123,8 @@ export default function ChatInput({
           <Button
             size="icon"
             onClick={handleSend}
-            disabled={!message.trim() || loading || uploading}
-            className="h-10 w-10 rounded-full shrink-0"
+            disabled={!message.trim() || isActionDisabled}
+            className="h-10 w-10 shrink-0 rounded-full cursor-pointer"
           >
             <ArrowUp className="h-4 w-4" />
           </Button>
