@@ -1,3 +1,4 @@
+import os
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from io import BytesIO
 import uuid
@@ -26,28 +27,37 @@ async def upload_pdf(
         
         unique_file_name = f"{uuid.uuid4()}_{file.filename}"
         
-        MINIO_CLIENT.put_object(
-            bucket_name=MINIO_BUCKET_NAME,
-            object_name=unique_file_name,
-            data=BytesIO(file_content),
-            length=file_size,
-            content_type="application/pdf"
-        )
-        print(f"File {unique_file_name} successfully uploaded to MinIO.")
+        try:
+            MINIO_CLIENT.put_object(
+                bucket_name=MINIO_BUCKET_NAME,
+                object_name=unique_file_name,
+                data=BytesIO(file_content),
+                length=file_size,
+                content_type="application/pdf"
+            )
+            print(f"File {unique_file_name} successfully uploaded.")
+        except Exception as storage_err:
+            print(f"Storage Upload Error: {storage_err}")
+            raise HTTPException(
+                status_code=502, 
+                detail=f"Failed to upload file to storage server: {str(storage_err)}"
+            )
         
         chunks = extract_and_chunk_pdf(BytesIO(file_content))
         
         if chunks:
             vector_store.add_documents(chunks=chunks, file_name=unique_file_name)
         else:
-            print("No readable text found in the PDF.")
+            print("No readable text found in the PDF. Object saved but not indexed.")
             
         return {
             "message": "File uploaded and indexed successfully",
             "file_name": unique_file_name,
-            "chunks_count": len(chunks)
+            "chunks_count": len(chunks) if chunks else 0
         }
         
+    except HTTPException as http_err:
+        raise http_err
     except Exception as e:
         print(f"Error during file upload or indexing: {e}")
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")

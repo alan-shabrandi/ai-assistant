@@ -29,8 +29,15 @@ MINIO_BUCKET_NAME = os.getenv("MINIO_BUCKET_NAME")
 
 IS_PRODUCTION = MINIO_ENDPOINT and "supabase" in MINIO_ENDPOINT.lower()
 
+if IS_PRODUCTION:
+    clean_endpoint = MINIO_ENDPOINT.replace("https://", "").replace("http://", "")
+    if not clean_endpoint.endswith("/storage/v1/s3"):
+        clean_endpoint = clean_endpoint.rstrip("/") + "/storage/v1/s3"
+else:
+    clean_endpoint = MINIO_ENDPOINT.replace("https://", "").replace("http://", "").split("/")[0]
+
 MINIO_CLIENT = Minio(
-    MINIO_ENDPOINT,
+    clean_endpoint,
     access_key=MINIO_ACCESS_KEY,
     secret_key=MINIO_SECRET_KEY,
     secure=True if IS_PRODUCTION else False,
@@ -38,8 +45,11 @@ MINIO_CLIENT = Minio(
 )
 
 try:
-    if not MINIO_CLIENT.bucket_exists(MINIO_BUCKET_NAME):
-        MINIO_CLIENT.make_bucket(MINIO_BUCKET_NAME)
-        print(f"Bucket '{MINIO_BUCKET_NAME}' created successfully.")
+    if not IS_PRODUCTION:
+        if not MINIO_CLIENT.bucket_exists(MINIO_BUCKET_NAME):
+            MINIO_CLIENT.make_bucket(MINIO_BUCKET_NAME)
+            print(f"Bucket '{MINIO_BUCKET_NAME}' created successfully on Local MinIO.")
+    else:
+        print("Connected to Supabase Storage successfully.")
 except Exception as e:
-    print(f"Error connecting to MinIO or creating bucket: {e}")
+    print(f"Error connecting to Storage or initializing bucket: {e}")
