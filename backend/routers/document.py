@@ -28,12 +28,11 @@ async def upload_pdf(
         unique_file_name = f"{uuid.uuid4()}_{file.filename}"
         
         try:
-            MINIO_CLIENT.put_object(
-                bucket_name=MINIO_BUCKET_NAME,
-                object_name=unique_file_name,
-                data=BytesIO(file_content),
-                length=file_size,
-                content_type="application/pdf"
+            MINIO_CLIENT.upload_fileobj(
+                Fileobj=BytesIO(file_content),
+                Bucket=MINIO_BUCKET_NAME,
+                Key=unique_file_name,
+                ExtraArgs={"ContentType": "application/pdf"}
             )
             print(f"File {unique_file_name} successfully uploaded.")
         except Exception as storage_err:

@@ -1,6 +1,7 @@
 import os
 from openai import OpenAI
-from minio import Minio
+import boto3
+from botocore.client import Config
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 ALGORITHM = "HS256"
@@ -31,28 +32,36 @@ IS_PRODUCTION = MINIO_ENDPOINT and "supabase" in MINIO_ENDPOINT.lower()
 
 if IS_PRODUCTION:
     clean_endpoint = MINIO_ENDPOINT.replace("https://", "").replace("http://", "").split("/")[0]
+    full_url = f"https://{clean_endpoint}/storage/v1/s3"
+    
+    MINIO_CLIENT = boto3.client(
+        "s3",
+        endpoint_url=full_url,
+        aws_access_key_id=MINIO_ACCESS_KEY,
+        aws_secret_access_key=MINIO_SECRET_KEY,
+        region_name="eu-central-1",
+        config=Config(signature_version="s3v4")
+    )
 else:
-    clean_endpoint = MINIO_ENDPOINT.replace("https://", "").replace("http://", "").split("/")[0]
-
-MINIO_CLIENT = Minio(
-    clean_endpoint,
-    access_key=MINIO_ACCESS_KEY,
-    secret_key=MINIO_SECRET_KEY,
-    secure=True if IS_PRODUCTION else False,
-    region="eu-central-1" if IS_PRODUCTION else None
-)
-
-if IS_PRODUCTION:
-    MINIO_CLIENT._base_url.is_aws = False
-    MINIO_CLIENT._base_url.bucket_path = lambda bucket_name: f"/storage/v1/s3/{bucket_name}"
-    MINIO_CLIENT._base_url.object_path = lambda bucket_name, object_name: f"/storage/v1/s3/{bucket_name}/{object_name}"
+    clean_endpoint = MINIO_ENDPOINT.replace("https://", "").replace("http://", "")
+    full_url = f"http://{clean_endpoint}"
+    
+    MINIO_CLIENT = boto3.client(
+        "s3",
+        endpoint_url=full_url,
+        aws_access_key_id=MINIO_ACCESS_KEY,
+        aws_secret_access_key=MINIO_SECRET_KEY,
+        config=Config(addressing_style="path")
+    )
 
 try:
     if not IS_PRODUCTION:
-        if not MINIO_CLIENT.bucket_exists(MINIO_BUCKET_NAME):
-            MINIO_CLIENT.make_bucket(MINIO_BUCKET_NAME)
+        try:
+            MINIO_CLIENT.head_bucket(Bucket=MINIO_BUCKET_NAME)
+        except Exception:
+            MINIO_CLIENT.create_bucket(Bucket=MINIO_BUCKET_NAME)
             print(f"Bucket '{MINIO_BUCKET_NAME}' created successfully on Local MinIO.")
     else:
-        print("Connected to Supabase Storage successfully.")
+        print("Connected to Supabase Storage via boto3 successfully.")
 except Exception as e:
-    print(f"Error connecting to Storage or initializing bucket: {e}")
+    print(f"Error initializing storage bucket: {e}")
