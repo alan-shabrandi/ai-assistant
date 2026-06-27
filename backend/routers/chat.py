@@ -94,7 +94,10 @@ async def chat(
     response = AI_CLIENT.chat.completions.create(
         model=AI_MODEL_NAME,
         messages=messages,
-        stream=True
+        stream=True,
+        temperature=0.7,
+        top_p=0.9,
+        max_tokens=1024
     )
 
     def generate():

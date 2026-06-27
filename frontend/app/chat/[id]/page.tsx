@@ -10,7 +10,7 @@ export default function ChatPage() {
   const chatId = params.id as string;
 
   return (
-    <main className="h-screen bg-background text-foreground">
+    <main className="h-screen bg-background text-foreground overflow-hidden">
       <div className="flex h-full">
         <Sidebar />
 
