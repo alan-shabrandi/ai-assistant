@@ -46,7 +46,10 @@ export default function ChatMessage({ message }: ChatMessageProps) {
               : "bg-muted",
         )}
       >
-        <p className="whitespace-pre-wrap wrap-break-word text-sm leading-7 dir-rtl text-right">
+        <p
+          dir="auto"
+          className="whitespace-pre-wrap wrap-break-word text-sm leading-7 text-start"
+        >
           {message.content}
         </p>
       </Card>

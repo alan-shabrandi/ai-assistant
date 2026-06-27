@@ -1,8 +1,8 @@
 import os
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Request
 from io import BytesIO
 import uuid
-
+from utils import limiter
 from config import MINIO_CLIENT, MINIO_BUCKET_NAME
 from security import get_current_user_from_cookie
 from vector_store import SimpleVectorStore, extract_and_chunk_pdf
@@ -12,9 +12,14 @@ router = APIRouter(tags=["Documents"])
 def get_vector_store():
     return SimpleVectorStore()
 
+MAX_FILE_SIZE = 5 * 1024 * 1024
+
 @router.post("/documents/upload")
+@limiter.limit("3/minute")
 async def upload_pdf(
+    request: Request,
     file: UploadFile = File(...),
+    session_id: str = Form(...),
     current_user: str = Depends(get_current_user_from_cookie),
     vector_store: SimpleVectorStore = Depends(get_vector_store)
 ):
@@ -24,6 +29,12 @@ async def upload_pdf(
     try:
         file_content = await file.read()
         file_size = len(file_content)
+        
+        if file_size > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=413, 
+                detail="File is too large. Maximum allowed size is 5MB."
+            )
         
         unique_file_name = f"{uuid.uuid4()}_{file.filename}"
         
@@ -45,7 +56,7 @@ async def upload_pdf(
         chunks = extract_and_chunk_pdf(BytesIO(file_content))
         
         if chunks:
-            vector_store.add_documents(chunks=chunks, file_name=unique_file_name)
+            vector_store.add_documents(chunks=chunks, file_name=unique_file_name, session_id=session_id)
         else:
             print("No readable text found in the PDF. Object saved but not indexed.")
             

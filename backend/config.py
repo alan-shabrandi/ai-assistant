@@ -44,6 +44,10 @@ if IS_PRODUCTION:
     )
 else:
     clean_endpoint = MINIO_ENDPOINT.replace("https://", "").replace("http://", "")
+    
+    if "localhost" in clean_endpoint or "127.0.0.1" in clean_endpoint:
+        clean_endpoint = clean_endpoint.replace("localhost", "minio").replace("127.0.0.1", "minio")
+        
     full_url = f"http://{clean_endpoint}"
     
     MINIO_CLIENT = boto3.client(
@@ -51,7 +55,7 @@ else:
         endpoint_url=full_url,
         aws_access_key_id=MINIO_ACCESS_KEY,
         aws_secret_access_key=MINIO_SECRET_KEY,
-        config=Config(addressing_style="path")
+        config=Config(s3={'addressing_style': 'path'})
     )
 
 try:

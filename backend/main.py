@@ -2,6 +2,9 @@ import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
+from utils import limiter
 
 from routers import auth, chat, document
 from vector_store import SimpleVectorStore
@@ -19,6 +22,15 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(lifespan=lifespan)
+
+app.state.limiter = limiter
+
+@app.exception_handler(RateLimitExceeded)
+async def custom_rate_limit_exceeded_handler(request, exc):
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Too many requests. Please slow down."}
+    )
 
 ALLOWED_ORIGINS = [
     "http://localhost:3000",

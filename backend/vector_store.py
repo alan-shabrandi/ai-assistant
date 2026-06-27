@@ -31,9 +31,11 @@ class SimpleVectorStore:
         with self._get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+                
                 cur.execute(f"""
                     CREATE TABLE IF NOT EXISTS documents (
                         id SERIAL PRIMARY KEY,
+                        session_id UUID NOT NULL, -- اتصال مستقیم سند به سشن چت
                         file_name VARCHAR(255),
                         content TEXT,
                         embedding vector({self.dimension})
@@ -68,7 +70,7 @@ class SimpleVectorStore:
         )
         return response.data[0].embedding
 
-    def add_documents(self, chunks: list[str], file_name: str):
+    def add_documents(self, chunks: list[str], file_name: str, session_id: str):
         if not chunks:
             return
             
@@ -77,7 +79,7 @@ class SimpleVectorStore:
             for chunk in chunks:
                 try:
                     emb = self.get_embedding(chunk)
-                    data_to_insert.append((file_name, chunk, emb))
+                    data_to_insert.append((session_id, file_name, chunk, emb))
                 except Exception as e:
                     print(f"Error generating embedding for chunk: {e}")
                     continue
@@ -86,13 +88,13 @@ class SimpleVectorStore:
                 with conn.cursor() as cur:
                     execute_values(
                         cur,
-                        "INSERT INTO documents (file_name, content, embedding) VALUES %s",
+                        "INSERT INTO documents (session_id, file_name, content, embedding) VALUES %s",
                         data_to_insert
                     )
                 conn.commit()
-                print(f"Successfully indexed {len(data_to_insert)} chunks for file {file_name}.")
+                print(f"Successfully indexed {len(data_to_insert)} chunks for file {file_name} in session {session_id}.")
 
-    def search(self, query: str, top_k: int = 3) -> list[str]:
+    def search(self, query: str, session_id: str, top_k: int = 3) -> list[dict]:
         query_emb = self.get_embedding(query)
         
         with self._get_connection() as conn:
@@ -100,14 +102,24 @@ class SimpleVectorStore:
                 cur.execute(
                     """
                     SELECT content, file_name FROM documents 
+                    WHERE session_id = %s -- فقط اسناد مربوط به این چت سرچ شوند
                     ORDER BY embedding <=> %s::vector 
                     LIMIT %s;
                     """,
-                    (query_emb, top_k)
+                    (session_id, query_emb, top_k)
                 )
                 rows = cur.fetchall()
         return [{"content": row[0], "file_name": row[1]} for row in rows]
     
+    def has_uploaded_documents(self, session_id: str) -> bool:
+        with self._get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT EXISTS(SELECT 1 FROM documents WHERE session_id = %s);",
+                    (session_id,)
+                )
+                return cur.fetchone()[0]
+
     def save_message(self, session_id: str, username: str, role: str, content: str):
         with self._get_connection() as conn:
             with conn.cursor() as cur:

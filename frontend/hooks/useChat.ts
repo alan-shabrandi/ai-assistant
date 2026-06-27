@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Message } from "@/components/chat/types";
+import { toast } from "sonner";
 
 export function useChat(sessionId: string) {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [hasFiles, setHasFiles] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
@@ -36,6 +38,7 @@ export function useChat(sessionId: string) {
         );
 
         if (response.status === 401) {
+          toast.error("Session expired. Please log in again.");
           localStorage.removeItem("user_logged_in");
           router.push("/login");
           return;
@@ -44,9 +47,13 @@ export function useChat(sessionId: string) {
         if (response.ok) {
           const data = await response.json();
           setMessages(data.history || []);
+          setHasFiles(data.has_files || false);
+        } else {
+          toast.error("Failed to load chat history from server.");
         }
       } catch (error) {
         console.error("Failed to fetch chat history:", error);
+        toast.error("Network error: Could not load chat history.");
       }
     };
 
@@ -73,13 +80,27 @@ export function useChat(sessionId: string) {
       });
 
       if (response.status === 401) {
+        toast.error("Session expired. Please log in again.");
         localStorage.removeItem("user_logged_in");
         router.push("/login");
         router.refresh();
-        throw new Error("Session expired. Please log in again.");
+        throw new Error("Session expired.");
       }
 
-      if (!response.ok) throw new Error("Request failed");
+      if (response.status === 429) {
+        toast.warning("Rate limit exceeded. Please wait a minute.");
+        throw new Error("Too many requests. Please slow down.");
+      }
+
+      if (response.status === 403) {
+        toast.error("Demo limit reached for this session.");
+        throw new Error("Session chat limit reached.");
+      }
+
+      if (!response.ok) {
+        toast.error("Server encountered an error.");
+        throw new Error("Request failed");
+      }
 
       const reader = response.body?.getReader();
       if (!reader) throw new Error("No response stream");
@@ -87,24 +108,46 @@ export function useChat(sessionId: string) {
       const decoder = new TextDecoder();
       setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
 
+      let buffer = "";
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
 
-        setMessages((prev) => {
-          const copy = [...prev];
-          const lastIndex = copy.length - 1;
-          copy[lastIndex] = {
-            ...copy[lastIndex],
-            content: copy[lastIndex].content + chunk,
-          };
-          return copy;
-        });
+        let currentChunkText = "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const content = line.substring(6);
+            currentChunkText += content;
+          }
+        }
+
+        if (currentChunkText) {
+          setMessages((prev) => {
+            const copy = [...prev];
+            const lastIndex = copy.length - 1;
+            copy[lastIndex] = {
+              ...copy[lastIndex],
+              content: copy[lastIndex].content + currentChunkText,
+            };
+            return copy;
+          });
+        }
       }
     } catch (error: any) {
       console.error(error);
+      if (
+        error.message !== "Session expired." &&
+        error.message !== "Too many requests. Please slow down." &&
+        error.message !== "Session chat limit reached."
+      ) {
+        toast.error("Failed to connect to the server.");
+      }
       setMessages((prev) => [
         ...prev,
         {
@@ -123,14 +166,9 @@ export function useChat(sessionId: string) {
     setUploading(true);
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("session_id", sessionId);
 
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "assistant",
-        content: `Uploading and processing file "${file.name}"... Please wait.`,
-      },
-    ]);
+    const uploadToastId = toast.loading(`Uploading "${file.name}"...`);
 
     try {
       const response = await fetch(`${BACKEND_URL}/documents/upload`, {
@@ -140,30 +178,22 @@ export function useChat(sessionId: string) {
       });
 
       if (response.status === 401) {
+        toast.error("Session expired.", { id: uploadToastId });
         localStorage.removeItem("user_logged_in");
         router.push("/login");
         return;
       }
 
-      if (!response.ok) throw new Error("File upload failed.");
+      if (!response.ok) {
+        toast.error("File processing failed on server.", { id: uploadToastId });
+        throw new Error("File upload failed.");
+      }
 
       const data = await response.json();
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: `File "${file.name}" uploaded successfully (${data.chunks_count} chunks extracted). You can now ask questions about this document.`,
-        },
-      ]);
+      toast.success("Document processed successfully!", { id: uploadToastId });
+      setHasFiles(true);
     } catch (error: any) {
       console.error(error);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: `Error processing file: ${error.message || "An unexpected error occurred."}`,
-        },
-      ]);
     } finally {
       setUploading(false);
     }
@@ -173,6 +203,7 @@ export function useChat(sessionId: string) {
     messages,
     loading,
     uploading,
+    hasFiles,
     messagesEndRef,
     handleSend,
     handleFileUpload,
