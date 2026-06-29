@@ -1,3 +1,5 @@
+[![Swagger API Docs](https://img.shields.io/badge/Swagger-API_Docs-green?style=for-the-badge&logo=swagger)](https://ai-assistant-0tto.onrender.com/docs)
+
 # 🚀 AI-Powered RAG Chat Assistant
 
 ### FastAPI + PostgreSQL (pgvector) + MinIO
@@ -113,9 +115,9 @@ app/
 ## 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/your-repo-name.git
+git clone https://github.com/alan-shabrandi/ai-assistant
 
-cd your-repo-name
+cd ai-assistant
 ```
 
 ---

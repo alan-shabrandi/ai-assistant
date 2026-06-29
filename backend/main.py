@@ -76,6 +76,10 @@ app = FastAPI(
     * **Chat**: Semantic search via pgvector and streaming AI responses.
     """,
     version="1.0.0",
+    servers=[
+        {"url": "https://ai-assistant-murex-beta.vercel.app", "description": "Production Server"},
+        {"url": "http://localhost:8000", "description": "Local Development"}
+    ],
     docs_url="/docs",      
     redoc_url="/redoc",
     lifespan=lifespan
