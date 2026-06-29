@@ -162,3 +162,33 @@ class SimpleVectorStore:
                 rows = cur.fetchall()
         rows.sort(key=lambda x: x[2], reverse=True)
         return [{"session_id": str(row[0]), "title": row[1]} for row in rows]
+    
+    def delete_chat_session(self, session_id: str, username: str) -> list[str]:
+        file_names_to_delete = []
+        with self._get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM chat_messages WHERE session_id = %s AND username = %s LIMIT 1;",
+                    (session_id, username)
+                )
+                if not cur.fetchone():
+                    return []
+
+                cur.execute(
+                    "SELECT DISTINCT file_name FROM documents WHERE session_id = %s AND file_name IS NOT NULL;",
+                    (session_id,)
+                )
+                file_names_to_delete = [row[0] for row in cur.fetchall()]
+
+                cur.execute(
+                    "DELETE FROM documents WHERE session_id = %s;",
+                    (session_id,)
+                )
+
+                cur.execute(
+                    "DELETE FROM chat_messages WHERE session_id = %s AND username = %s;",
+                    (session_id, username)
+                )
+                
+            conn.commit()
+        return file_names_to_delete

@@ -5,6 +5,7 @@ from config import AI_CLIENT, AI_MODEL_NAME
 from schemas import ChatRequest
 from security import get_current_user_from_cookie
 from vector_store import SimpleVectorStore
+from config import MINIO_CLIENT, MINIO_BUCKET_NAME
 
 router = APIRouter(tags=["Chat"])
 
@@ -158,3 +159,37 @@ async def get_sessions(
 ):
     sessions = vector_store.get_user_sessions(username=current_user)
     return {"sessions": sessions}
+
+@router.delete("/chat/session/{session_id}")
+async def delete_session(
+    session_id: str,
+    current_user: str = Depends(get_current_user_from_cookie),
+    vector_store: SimpleVectorStore = Depends(get_vector_store)
+):
+    if not session_id or session_id == "undefined":
+        raise HTTPException(status_code=400, detail="Invalid or missing session_id")
+        
+    try:
+        # ۱. حذف از دیتابیس و دریافت لیست نام فایل‌ها
+        files_to_delete = vector_store.delete_chat_session(session_id=session_id, username=current_user)
+        
+        # اگر سشنی وجود نداشت یا متعلق به کاربر نبود، لیست خالی برمی‌گردد اما برای اطمینان بیشتر:
+        # (با توجه به اینکه ممکن است چتی مستندات نداشته باشد ولی پیام داشته باشد، ملاک وجود سشن را بررسی می‌کنیم)
+        
+        # ۲. پاکسازی فایل‌های اصلی از MinIO
+        for file_name in files_to_delete:
+            try:
+                MINIO_CLIENT.delete_object(
+                    Bucket=MINIO_BUCKET_NAME,
+                    Key=file_name
+                )
+                print(f"File {file_name} successfully deleted from Minio.")
+            except Exception as minio_err:
+                # خطای مینایو را لاگ می‌کنیم تا فرآیند اصلی حذف چت به خاطر یک فایل به مشکل نخورد
+                print(f"Warning: Failed to delete object {file_name} from MinIO: {minio_err}")
+                
+        return {"message": "Chat session, database records, and storage files deleted successfully."}
+        
+    except Exception as e:
+        print(f"Error during complete chat session deletion: {e}")
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
