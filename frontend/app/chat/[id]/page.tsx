@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 import ChatArea from "@/components/chat/ChatArea";
 import Header from "@/components/layout/Header";
-import Sidebar from "@/components/layout/Sidebar";
+import Sidebar from "@/components/layout/sidebar/Sidebar";
 
 export default function ChatPage() {
   const params = useParams();

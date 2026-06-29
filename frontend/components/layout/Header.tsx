@@ -1,50 +1,32 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Sparkles, LogOut, LogIn, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/context/auth-context";
+import { apiClient } from "@/lib/api-client";
 
 export default function Header() {
   const router = useRouter();
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
-  const [checkingAuth, setCheckingAuth] = useState<boolean>(true);
-
-  useEffect(() => {
-    const checkAuthStatus = async () => {
-      try {
-        const userLoggedFlag = localStorage.getItem("user_logged_in");
-        setIsLoggedIn(userLoggedFlag === "true");
-      } catch (err) {
-        setIsLoggedIn(false);
-      } finally {
-        setCheckingAuth(false);
-      }
-    };
-
-    checkAuthStatus();
-  }, []);
+  const { isLoggedIn, checkingAuth, logout } = useAuth();
+  const [isLoggingOut, setIsLoggingOut] = useState<boolean>(false);
 
   const handleSignOut = async () => {
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL}/logout`,
-        {
-          method: "POST",
-          credentials: "include",
-        },
-      );
+      setIsLoggingOut(true);
 
-      if (response.ok) {
-        localStorage.removeItem("user_logged_in");
-        setIsLoggedIn(false);
-        router.push("/login");
-        router.refresh();
-      }
+      await apiClient.post("/logout");
+
+      logout();
+      router.push("/login");
+      router.refresh();
     } catch (error) {
-      console.error("Logout failed:", error);
+      console.error("Logout error:", error);
+    } finally {
+      setIsLoggingOut(false);
     }
   };
 
@@ -65,11 +47,16 @@ export default function Header() {
           <Button
             variant="ghost"
             size="sm"
+            disabled={isLoggingOut}
             className="text-muted-foreground hover:text-destructive gap-2"
             onClick={handleSignOut}
           >
-            <LogOut className="h-4 w-4" />
-            Sign Out
+            {isLoggingOut ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <LogOut className="h-4 w-4" />
+            )}
+            {isLoggingOut ? "Signing Out..." : "Sign Out"}
           </Button>
         ) : (
           <Button asChild size="sm" className="gap-2">

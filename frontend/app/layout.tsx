@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 
 import "./globals.css";
+import { AuthProvider } from "@/context/auth-context";
 
 const geist = Geist({
   subsets: ["latin"],
@@ -34,7 +35,7 @@ export default function RootLayout({
       className={`${geist.variable} ${geistMono.variable}`}
     >
       <body className="min-h-screen bg-background font-sans text-foreground antialiased">
-        <>{children}</>
+        <AuthProvider>{children}</AuthProvider>
         <Toaster position="top-center" />
       </body>
     </html>
