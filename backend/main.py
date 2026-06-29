@@ -8,9 +8,12 @@ from utils import limiter
 
 from routers import auth, chat, document
 from vector_store import SimpleVectorStore
+from database import initialize_pool, close_pool
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    initialize_pool()
+    
     store = SimpleVectorStore()
     try:
         print("Initializing database tables...")
@@ -20,6 +23,8 @@ async def lifespan(app: FastAPI):
         print(f"Error initializing database: {e}")
         
     yield
+    
+    close_pool()
 
 app = FastAPI(lifespan=lifespan)
 

@@ -170,13 +170,7 @@ async def delete_session(
         raise HTTPException(status_code=400, detail="Invalid or missing session_id")
         
     try:
-        # ۱. حذف از دیتابیس و دریافت لیست نام فایل‌ها
         files_to_delete = vector_store.delete_chat_session(session_id=session_id, username=current_user)
-        
-        # اگر سشنی وجود نداشت یا متعلق به کاربر نبود، لیست خالی برمی‌گردد اما برای اطمینان بیشتر:
-        # (با توجه به اینکه ممکن است چتی مستندات نداشته باشد ولی پیام داشته باشد، ملاک وجود سشن را بررسی می‌کنیم)
-        
-        # ۲. پاکسازی فایل‌های اصلی از MinIO
         for file_name in files_to_delete:
             try:
                 MINIO_CLIENT.delete_object(
@@ -185,7 +179,6 @@ async def delete_session(
                 )
                 print(f"File {file_name} successfully deleted from Minio.")
             except Exception as minio_err:
-                # خطای مینایو را لاگ می‌کنیم تا فرآیند اصلی حذف چت به خاطر یک فایل به مشکل نخورد
                 print(f"Warning: Failed to delete object {file_name} from MinIO: {minio_err}")
                 
         return {"message": "Chat session, database records, and storage files deleted successfully."}
