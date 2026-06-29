@@ -1,6 +1,5 @@
-import psycopg2
-from psycopg2 import pool
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
+from psycopg_pool import AsyncConnectionPool
 from config import DATABASE_URL
 
 db_pool = None
@@ -9,30 +8,34 @@ def initialize_pool():
     global db_pool
     if db_pool is None:
         try:
-            db_pool = psycopg2.pool.ThreadedConnectionPool(
-                minconn=5,
-                maxconn=20,
-                dsn=DATABASE_URL
+            db_pool = AsyncConnectionPool(
+                conninfo=DATABASE_URL,
+                min_size=5,
+                max_size=20,
+                open=False
             )
-            print("Database Connection Pool initialized successfully.")
+            print("Async Database Connection Pool defined.")
         except Exception as e:
-            print(f"Error creating connection pool: {e}")
+            print(f"Error defining async connection pool: {e}")
             raise e
 
-def close_pool():
+async def open_pool():
     global db_pool
     if db_pool:
-        db_pool.closeall()
-        print("Database Connection Pool closed.")
+        await db_pool.open()
+        print("Async Database Connection Pool opened successfully.")
 
-@contextmanager
-def get_db():
+async def close_pool():
+    global db_pool
+    if db_pool:
+        await db_pool.close()
+        print("Async Database Connection Pool closed.")
+
+@asynccontextmanager
+async def get_db():
     global db_pool
     if db_pool is None:
-        raise RuntimeError("Database connection pool is not initialized.")
+        raise RuntimeError("Async Database connection pool is not initialized.")
     
-    conn = db_pool.getconn()
-    try:
+    async with db_pool.connection() as conn:
         yield conn
-    finally:
-        db_pool.putconn(conn)

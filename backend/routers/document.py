@@ -1,5 +1,4 @@
-import os
-from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Request, BackgroundTasks
 from io import BytesIO
 import uuid
 from utils import limiter
@@ -14,10 +13,22 @@ def get_vector_store():
 
 MAX_FILE_SIZE = 5 * 1024 * 1024
 
+async def process_pdf_background(file_content: bytes, unique_file_name: str, session_id: str, vector_store: SimpleVectorStore):
+    try:
+        chunks = extract_and_chunk_pdf(BytesIO(file_content))
+        if chunks:
+            await vector_store.add_documents(chunks=chunks, file_name=unique_file_name, session_id=session_id)
+        else:
+            print(f"No readable text found in the PDF ({unique_file_name}). Not indexed.")
+    except Exception as e:
+        print(f"Background indexing failed for {unique_file_name}: {e}")
+
+
 @router.post("/documents/upload")
 @limiter.limit("3/minute")
 async def upload_pdf(
     request: Request,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     session_id: str = Form(...),
     current_user: str = Depends(get_current_user_from_cookie),
@@ -45,7 +56,7 @@ async def upload_pdf(
                 Key=unique_file_name,
                 ExtraArgs={"ContentType": "application/pdf"}
             )
-            print(f"File {unique_file_name} successfully uploaded.")
+            print(f"File {unique_file_name} successfully uploaded to MinIO.")
         except Exception as storage_err:
             print(f"Storage Upload Error: {storage_err}")
             raise HTTPException(
@@ -53,21 +64,21 @@ async def upload_pdf(
                 detail=f"Failed to upload file to storage server: {str(storage_err)}"
             )
         
-        chunks = extract_and_chunk_pdf(BytesIO(file_content))
-        
-        if chunks:
-            vector_store.add_documents(chunks=chunks, file_name=unique_file_name, session_id=session_id)
-        else:
-            print("No readable text found in the PDF. Object saved but not indexed.")
+        background_tasks.add_task(
+            process_pdf_background, 
+            file_content, 
+            unique_file_name, 
+            session_id, 
+            vector_store
+        )
             
         return {
-            "message": "File uploaded and indexed successfully",
-            "file_name": unique_file_name,
-            "chunks_count": len(chunks) if chunks else 0
+            "message": "File uploaded successfully. Processing and indexing started in background.",
+            "file_name": unique_file_name
         }
         
     except HTTPException as http_err:
         raise http_err
     except Exception as e:
-        print(f"Error during file upload or indexing: {e}")
+        print(f"Error during file upload: {e}")
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")

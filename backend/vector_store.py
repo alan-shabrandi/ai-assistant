@@ -1,10 +1,9 @@
-import psycopg2
-from psycopg2.extras import execute_values
 from pypdf import PdfReader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from io import BytesIO
 
 from config import DATABASE_URL, AI_CLIENT, EMBEDDING_MODEL, DEFAULT_DIMENSION
+from database import get_db
 
 
 def extract_and_chunk_pdf(file_stream: BytesIO, chunk_size: int = 600, chunk_overlap: int = 100) -> list[str]:
@@ -24,44 +23,53 @@ class SimpleVectorStore:
     def __init__(self, dimension: int = DEFAULT_DIMENSION):
         self.dimension = dimension
 
-    def _get_connection(self):
-        return psycopg2.connect(DATABASE_URL)
-
-    def init_db(self):
-        with self._get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-                
-                cur.execute(f"""
-                    CREATE TABLE IF NOT EXISTS documents (
-                        id SERIAL PRIMARY KEY,
-                        session_id UUID NOT NULL, -- اتصال مستقیم سند به سشن چت
-                        file_name VARCHAR(255),
-                        content TEXT,
-                        embedding vector({self.dimension})
-                    );
-                """)
-                
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS users (
-                        id SERIAL PRIMARY KEY,
-                        username VARCHAR(50) UNIQUE NOT NULL,
-                        hashed_password VARCHAR(255) NOT NULL
-                    );
-                """)
-                
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS chat_messages (
-                        id SERIAL PRIMARY KEY,
-                        session_id UUID NOT NULL,
-                        username VARCHAR(50) NOT NULL,
-                        role VARCHAR(10) NOT NULL, -- 'user' یا 'assistant'
-                        content TEXT NOT NULL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
-                    );
-                """)
-            conn.commit()
+    async def init_db(self):
+        async with get_db() as conn:
+            async with conn.cursor() as cur:
+                try:
+                    await cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+                    
+                    await cur.execute(f"""
+                        CREATE TABLE IF NOT EXISTS documents (
+                            id SERIAL PRIMARY KEY,
+                            session_id UUID NOT NULL,
+                            file_name VARCHAR(255),
+                            content TEXT,
+                            embedding vector({self.dimension})
+                        );
+                    """)
+                    
+                    await cur.execute("""
+                        CREATE TABLE IF NOT EXISTS users (
+                            id SERIAL PRIMARY KEY,
+                            username VARCHAR(50) UNIQUE NOT NULL,
+                            hashed_password VARCHAR(255) NOT NULL
+                        );
+                    """)
+                    
+                    await cur.execute("""
+                        CREATE TABLE IF NOT EXISTS chat_messages (
+                            id SERIAL PRIMARY KEY,
+                            session_id UUID NOT NULL,
+                            username VARCHAR(50) NOT NULL,
+                            role VARCHAR(10) NOT NULL,
+                            content TEXT NOT NULL,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+                        );
+                    """)
+                    
+                    await cur.execute("""
+                        CREATE TABLE IF NOT EXISTS chat_titles (
+                            session_id UUID PRIMARY KEY,
+                            title VARCHAR(255) NOT NULL
+                        );
+                    """)
+                    await conn.commit()
+                except Exception as e:
+                    await conn.rollback()
+                    print(f"Failed to initialize database tables: {e}")
+                    raise e
 
     def get_embedding(self, text: str) -> list[float]:
         response = AI_CLIENT.embeddings.create(
@@ -70,72 +78,82 @@ class SimpleVectorStore:
         )
         return response.data[0].embedding
 
-    def add_documents(self, chunks: list[str], file_name: str, session_id: str):
+    async def add_documents(self, chunks: list[str], file_name: str, session_id: str):
         if not chunks:
             return
             
-        with self._get_connection() as conn:
-            data_to_insert = []
-            for chunk in chunks:
-                try:
-                    emb = self.get_embedding(chunk)
-                    data_to_insert.append((session_id, file_name, chunk, emb))
-                except Exception as e:
-                    print(f"Error generating embedding for chunk: {e}")
-                    continue
-            
-            if data_to_insert:
-                with conn.cursor() as cur:
-                    execute_values(
-                        cur,
-                        "INSERT INTO documents (session_id, file_name, content, embedding) VALUES %s",
-                        data_to_insert
-                    )
-                conn.commit()
-                print(f"Successfully indexed {len(data_to_insert)} chunks for file {file_name} in session {session_id}.")
+        data_to_insert = []
+        for chunk in chunks:
+            try:
+                emb = self.get_embedding(chunk)
+                data_to_insert.append((session_id, file_name, chunk, emb))
+            except Exception as e:
+                print(f"Error generating embedding for chunk: {e}")
+                continue
+        
+        if data_to_insert:
+            async with get_db() as conn:
+                async with conn.cursor() as cur:
+                    try:
+                        await cur.executemany(
+                            "INSERT INTO documents (session_id, file_name, content, embedding) VALUES (%s, %s, %s, %s)",
+                            data_to_insert
+                        )
+                        await conn.commit()
+                        print(f"Successfully indexed {len(data_to_insert)} chunks for file {file_name}.")
+                    except Exception as e:
+                        await conn.rollback()
+                        print(f"Transaction failed during adding documents: {e}")
+                        raise e
 
-    def search(self, query: str, session_id: str, top_k: int = 3) -> list[dict]:
+    async def search(self, query: str, session_id: str, top_k: int = 3) -> list[dict]:
         query_emb = self.get_embedding(query)
         
-        with self._get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
+        async with get_db() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
                     """
                     SELECT content, file_name FROM documents 
-                    WHERE session_id = %s -- فقط اسناد مربوط به این چت سرچ شوند
+                    WHERE session_id = %s
                     ORDER BY embedding <=> %s::vector 
                     LIMIT %s;
                     """,
                     (session_id, query_emb, top_k)
                 )
-                rows = cur.fetchall()
+                rows = await cur.fetchall()
         return [{"content": row[0], "file_name": row[1]} for row in rows]
     
-    def has_uploaded_documents(self, session_id: str) -> bool:
-        with self._get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
+    async def has_uploaded_documents(self, session_id: str) -> bool:
+        async with get_db() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
                     "SELECT EXISTS(SELECT 1 FROM documents WHERE session_id = %s);",
                     (session_id,)
                 )
-                return cur.fetchone()[0]
+                res = await cur.fetchone()
+                return res[0]
 
-    def save_message(self, session_id: str, username: str, role: str, content: str):
-        with self._get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO chat_messages (session_id, username, role, content)
-                    VALUES (%s, %s, %s, %s);
-                    """,
-                    (session_id, username, role, content)
-                )
-            conn.commit()
+    async def save_message(self, session_id: str, username: str, role: str, content: str):
+        async with get_db() as conn:
+            async with conn.cursor() as cur:
+                try:
+                    await cur.execute(
+                        """
+                        INSERT INTO chat_messages (session_id, username, role, content)
+                        VALUES (%s, %s, %s, %s);
+                        """,
+                        (session_id, username, role, content)
+                    )
+                    await conn.commit()
+                except Exception as e:
+                    await conn.rollback()
+                    print(f"Failed to save chat message: {e}")
+                    raise e
             
-    def get_chat_history(self, session_id: str, username: str):
-        with self._get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
+    async def get_chat_history(self, session_id: str, username: str):
+        async with get_db() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
                     """
                     SELECT role, content, created_at 
                     FROM chat_messages 
@@ -144,51 +162,119 @@ class SimpleVectorStore:
                     """,
                     (session_id, username)
                 )
-                rows = cur.fetchall()
+                rows = await cur.fetchall()
         return [{"role": row[0], "content": row[1], "created_at": row[2].isoformat()} for row in rows]
 
-    def get_user_sessions(self, username: str):
-        with self._get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT DISTINCT ON (session_id) session_id, content, created_at
-                    FROM chat_messages
-                    WHERE username = %s AND role = 'user'
-                    ORDER BY session_id, created_at ASC;
-                    """,
-                    (username,)
-                )
-                rows = cur.fetchall()
-        rows.sort(key=lambda x: x[2], reverse=True)
-        return [{"session_id": str(row[0]), "title": row[1]} for row in rows]
-    
-    def delete_chat_session(self, session_id: str, username: str) -> list[str]:
-        file_names_to_delete = []
-        with self._get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT 1 FROM chat_messages WHERE session_id = %s AND username = %s LIMIT 1;",
-                    (session_id, username)
-                )
-                if not cur.fetchone():
+    async def set_session_title(self, session_id: str, title: str):
+        """ذخیره یا آپدیت عنوان اختصاصی یک سشن"""
+        async with get_db() as conn:
+            async with conn.cursor() as cur:
+                try:
+                    await cur.execute(
+                        """
+                        INSERT INTO chat_titles (session_id, title) 
+                        VALUES (%s, %s)
+                        ON CONFLICT (session_id) DO UPDATE SET title = EXCLUDED.title;
+                        """,
+                        (session_id, title)
+                    )
+                    await conn.commit()
+                    print(f"--- Title saved to DB: {title} ---")
+                except Exception as e:
+                    await conn.rollback()
+                    print(f"Error saving chat title: {e}")
+
+    async def get_user_sessions(self, username: str):
+        async with get_db() as conn:
+            async with conn.cursor() as cur:
+                try:
+                    await cur.execute(
+                        """
+                        WITH session_latest AS (
+                            SELECT session_id, MAX(created_at) as last_activity
+                            FROM chat_messages
+                            WHERE username = %s
+                            GROUP BY session_id
+                        ),
+                        session_first_msg AS (
+                            SELECT DISTINCT ON (session_id) session_id, content as original_msg
+                            FROM chat_messages
+                            WHERE username = %s AND role = 'user'
+                            ORDER BY session_id, created_at ASC
+                        )
+                        SELECT 
+                            sl.session_id, 
+                            COALESCE(t.title, SUBSTRING(sf.original_msg FROM 1 FOR 30)) as title
+                        FROM session_latest sl
+                        LEFT JOIN session_first_msg sf ON sl.session_id = sf.session_id
+                        LEFT JOIN chat_titles t ON sl.session_id = t.session_id
+                        ORDER BY sl.last_activity DESC;
+                        """,
+                        (username, username)
+                    )
+                    rows = await cur.fetchall()
+                    return [{"session_id": str(row[0]), "title": row[1]} for row in rows]
+                except Exception as e:
+                    print(f"Error fetching sessions: {e}")
                     return []
+    
+    async def delete_chat_session(self, session_id: str, username: str) -> list[str]:
+        file_names_to_delete = []
+        async with get_db() as conn:
+            async with conn.cursor() as cur:
+                try:
+                    await cur.execute(
+                        "SELECT 1 FROM chat_messages WHERE session_id = %s AND username = %s LIMIT 1;",
+                        (session_id, username)
+                    )
+                    res = await cur.fetchone()
+                    if not res:
+                        return []
 
-                cur.execute(
-                    "SELECT DISTINCT file_name FROM documents WHERE session_id = %s AND file_name IS NOT NULL;",
-                    (session_id,)
-                )
-                file_names_to_delete = [row[0] for row in cur.fetchall()]
+                    await cur.execute(
+                        "SELECT DISTINCT file_name FROM documents WHERE session_id = %s AND file_name IS NOT NULL;",
+                        (session_id,)
+                    )
+                    rows = await cur.fetchall()
+                    file_names_to_delete = [row[0] for row in rows]
 
-                cur.execute(
-                    "DELETE FROM documents WHERE session_id = %s;",
-                    (session_id,)
-                )
+                    await cur.execute(
+                        "DELETE FROM documents WHERE session_id = %s;",
+                        (session_id,)
+                    )
 
-                cur.execute(
-                    "DELETE FROM chat_messages WHERE session_id = %s AND username = %s;",
-                    (session_id, username)
-                )
-                
-            conn.commit()
+                    await cur.execute(
+                        "DELETE FROM chat_messages WHERE session_id = %s AND username = %s;",
+                        (session_id, username)
+                    )
+                    
+                    await conn.commit()
+                except Exception as e:
+                    await conn.rollback()
+                    print(f"Transaction failed during chat session deletion: {e}")
+                    raise e
+                    
         return file_names_to_delete
+    
+    async def update_session_title(self, session_id: str, username: str, new_title: str):
+        async with get_db() as conn:
+            async with conn.cursor() as cur:
+                try:
+                    await cur.execute(
+                        """
+                        UPDATE chat_messages 
+                        SET content = %s 
+                        WHERE id = (
+                            SELECT id FROM chat_messages 
+                            WHERE session_id = %s AND username = %s AND role = 'user'
+                            ORDER BY created_at ASC 
+                            LIMIT 1
+                        );
+                        """,
+                        (new_title, session_id, username)
+                    )
+                    await conn.commit()
+                    print(f"Session title updated to: '{new_title}'")
+                except Exception as e:
+                    await conn.rollback()
+                    print(f"Failed to update session title: {e}")

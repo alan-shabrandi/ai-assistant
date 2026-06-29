@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+import asyncio
+from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from utils import limiter
 from config import AI_CLIENT, AI_MODEL_NAME
@@ -10,8 +11,7 @@ from config import MINIO_CLIENT, MINIO_BUCKET_NAME
 router = APIRouter(tags=["Chat"])
 
 def get_vector_store():
-    store = SimpleVectorStore()
-    return store
+    return SimpleVectorStore()
 
 
 @router.post("/chat")
@@ -19,12 +19,13 @@ def get_vector_store():
 async def chat(
     request: Request,
     chat_data: ChatRequest,
+    background_tasks: BackgroundTasks,
     current_user: str = Depends(get_current_user_from_cookie),
     vector_store: SimpleVectorStore = Depends(get_vector_store)
 ):
     current_history = []
     try:
-        current_history = vector_store.get_chat_history(session_id=chat_data.session_id, username=current_user)
+        current_history = await vector_store.get_chat_history(session_id=chat_data.session_id, username=current_user)
         if current_history and len(current_history) >= 30:
             raise HTTPException(
                 status_code=403,
@@ -35,8 +36,11 @@ async def chat(
     except Exception as history_err:
         print(f"Error checking chat history limit: {history_err}")
 
+    is_first_message = len(current_history) == 0
+
+    # ۱. ذخیره پیام کامل کاربر بدون دستکاری
     try:
-        vector_store.save_message(
+        await vector_store.save_message(
             session_id=chat_data.session_id, 
             username=current_user, 
             role="user", 
@@ -47,19 +51,18 @@ async def chat(
 
     has_files = False
     try:
-        has_files = vector_store.has_uploaded_documents(chat_data.session_id)
+        has_files = await vector_store.has_uploaded_documents(chat_data.session_id)
     except Exception as e:
         print(f"Error checking uploaded documents: {e}")
 
     context = ""
     if has_files:
         try:
-            relevant_chunks = vector_store.search(query=chat_data.message, session_id=chat_data.session_id, top_k=3)
+            relevant_chunks = await vector_store.search(query=chat_data.message, session_id=chat_data.session_id, top_k=3)
             context_items = []
             for chunk in relevant_chunks:
                 clean_name = chunk['file_name'].split('_', 1)[-1] if chunk['file_name'] else "Unknown Source"
                 context_items.append(f"[Source File: {clean_name}]\n{chunk['content']}")
-                
             context = "\n---\n".join(context_items)
         except Exception as e:
             print(f"Error during vector search: {e}")
@@ -83,7 +86,6 @@ async def chat(
         )
 
     messages = [{"role": "system", "content": system_prompt}]
-    
     if current_history:
         for msg in current_history[-5:]:
             messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
@@ -101,23 +103,22 @@ async def chat(
         max_tokens=1024
     )
 
-    def generate():
+    async def generate():
         full_response = ""
         for chunk in response:
             if chunk and chunk.choices and len(chunk.choices) > 0:
                 delta = chunk.choices[0].delta
                 content = getattr(delta, "content", "")
-                
                 if content is not None and content != "":
                     if content.lower() == "null":
                         continue
-                        
                     full_response += content
                     yield f"data: {content}\n\n"
 
+        # ذخیره پاسخ بات پس از اتمام استریم
         if full_response.strip():
             try:
-                vector_store.save_message(
+                await vector_store.save_message(
                     session_id=chat_data.session_id, 
                     username=current_user, 
                     role="assistant", 
@@ -126,63 +127,37 @@ async def chat(
             except Exception as save_assistant_err:
                 print(f"Error saving assistant response: {save_assistant_err}")
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
-
-
-@router.get("/chat/history")
-async def get_history(
-    session_id: str,
-    current_user: str = Depends(get_current_user_from_cookie),
-    vector_store: SimpleVectorStore = Depends(get_vector_store)
-):
-    if not session_id or session_id == "undefined":
-        raise HTTPException(status_code=400, detail="Invalid or missing session_id")
-    
-    history = vector_store.get_chat_history(session_id=session_id, username=current_user)
-    
-    has_files = False
-    try:
-        has_files = vector_store.has_uploaded_documents(session_id)
-    except Exception as e:
-        print(f"Error checking documents in history endpoint: {e}")
-
-    return {
-        "history": history,
-        "has_files": has_files
-    }
-
-
-@router.get("/chat/sessions")
-async def get_sessions(
-    current_user: str = Depends(get_current_user_from_cookie),
-    vector_store: SimpleVectorStore = Depends(get_vector_store)
-):
-    sessions = vector_store.get_user_sessions(username=current_user)
-    return {"sessions": sessions}
-
-@router.delete("/chat/session/{session_id}")
-async def delete_session(
-    session_id: str,
-    current_user: str = Depends(get_current_user_from_cookie),
-    vector_store: SimpleVectorStore = Depends(get_vector_store)
-):
-    if not session_id or session_id == "undefined":
-        raise HTTPException(status_code=400, detail="Invalid or missing session_id")
-        
-    try:
-        files_to_delete = vector_store.delete_chat_session(session_id=session_id, username=current_user)
-        for file_name in files_to_delete:
+        # ۲. تغییر کلیدی: تولید عنوان درست بعد از اتمام موفق استریم چت در اولین پیام سشن
+        if is_first_message:
             try:
-                MINIO_CLIENT.delete_object(
-                    Bucket=MINIO_BUCKET_NAME,
-                    Key=file_name
+                print("--- Stream finished. Generating short title now... ---")
+                title_prompt = (
+                    "شما یک ابزار استخراج عنوان هستید. با توجه به پیام کاربر که در ادامه می‌آید، "
+                    "یک عنوان بسیار کوتاه، خلاصه و جذاب بین ۲ تا ۴ کلمه به زبان فارسی (یا انگلیسی اگر پیام کاملا انگلیسی است) بفرستید. "
+                    "قوانین: فقط و فقط خود عنوان را بفرستید و از هیچ نشانه، علامت، نقل‌قول یا توضیحی استفاده نکنید.\n\n"
+                    f"پیام کاربر:\n{chat_data.message}"
                 )
-                print(f"File {file_name} successfully deleted from Minio.")
-            except Exception as minio_err:
-                print(f"Warning: Failed to delete object {file_name} from MinIO: {minio_err}")
                 
-        return {"message": "Chat session, database records, and storage files deleted successfully."}
-        
-    except Exception as e:
-        print(f"Error during complete chat session deletion: {e}")
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+                # اجرای کاملاً ایمن فرآیند سنکرون ال‌ال‌ام در بدنه داخلی جنریتور آسنکرون
+                loop = asyncio.get_event_loop()
+                title_res = await loop.run_in_executor(
+                    None,
+                    lambda: AI_CLIENT.chat.completions.create(
+                        model=AI_MODEL_NAME,
+                        messages=[{"role": "user", "content": title_prompt}],
+                        stream=False,
+                        max_tokens=20,
+                        temperature=0.5
+                    )
+                )
+                title = title_res.choices[0].message.content.strip()
+                title = title.replace('"', '').replace("'", "").replace("عنوان:", "").strip()
+                
+                if title:
+                    # ذخیره مستقیم و بدون ارور در دیتابیس
+                    await vector_store.set_session_title(chat_data.session_id, title)
+                    print(f"--- Chat title successfully updated to DB: {title} ---")
+            except Exception as title_err:
+                print(f"Error generating title inside generator: {title_err}")
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
