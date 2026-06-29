@@ -1,49 +1,37 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
+import logging
+from fastapi import APIRouter, Depends, Response, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
-import psycopg
 from config import COOKIE_NAME, ACCESS_TOKEN_EXPIRE_MINUTES
-from database import get_db
 from schemas import UserRegister
-from security import hash_password, verify_password, create_access_token
+
+from services.auth_service import register_user, authenticate_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Authentication"])
 
+
 @router.post("/register")
 async def register(user: UserRegister):
-    hashed_pwd = hash_password(user.password)
-    try:
-        async with get_db() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    "INSERT INTO users (username, hashed_password) VALUES (%s, %s)",
-                    (user.username, hashed_pwd)
-                )
-                await conn.commit()
-        return {"message": "User registered successfully"}
-    except psycopg.errors.UniqueViolation:
-        raise HTTPException(status_code=400, detail="Username already exists")
+    await register_user(user)
+    return {"message": "User registered successfully"}
+
 
 @router.post("/login")
 async def login(response: Response, form_data: OAuth2PasswordRequestForm = Depends()):
-    async with get_db() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute("SELECT hashed_password FROM users WHERE username = %s", (form_data.username,))
-            user = await cur.fetchone()
-        
-    if not user or not verify_password(form_data.password, user[0]):
-        raise HTTPException(status_code=400, detail="Incorrect username or password")
-        
-    access_token = create_access_token(data={"sub": form_data.username})
+    access_token = await authenticate_user(form_data.username, form_data.password)
+    
     response.set_cookie(
         key=COOKIE_NAME,
         value=access_token,
         httponly=True,
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        samesite="none",
+        samesite="lax",
         secure=True,
         path="/"
     )
     return {"message": "Login successful"}
+
 
 @router.post("/logout")
 async def logout(response: Response):

@@ -1,27 +1,20 @@
-from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Request, BackgroundTasks
-from io import BytesIO
+import logging
 import uuid
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Request, BackgroundTasks
 from utils import limiter
-from config import MINIO_CLIENT, MINIO_BUCKET_NAME
 from security import get_current_user_from_cookie
-from vector_store import SimpleVectorStore, extract_and_chunk_pdf
+from vector_store import SimpleVectorStore
+
+from services.document_service import upload_to_storage, process_pdf_background
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Documents"])
 
-def get_vector_store():
-    return SimpleVectorStore()
-
 MAX_FILE_SIZE = 5 * 1024 * 1024
 
-async def process_pdf_background(file_content: bytes, unique_file_name: str, session_id: str, vector_store: SimpleVectorStore):
-    try:
-        chunks = extract_and_chunk_pdf(BytesIO(file_content))
-        if chunks:
-            await vector_store.add_documents(chunks=chunks, file_name=unique_file_name, session_id=session_id)
-        else:
-            print(f"No readable text found in the PDF ({unique_file_name}). Not indexed.")
-    except Exception as e:
-        print(f"Background indexing failed for {unique_file_name}: {e}")
+def get_vector_store() -> SimpleVectorStore:
+    return SimpleVectorStore()
 
 
 @router.post("/documents/upload")
@@ -50,18 +43,12 @@ async def upload_pdf(
         unique_file_name = f"{uuid.uuid4()}_{file.filename}"
         
         try:
-            MINIO_CLIENT.upload_fileobj(
-                Fileobj=BytesIO(file_content),
-                Bucket=MINIO_BUCKET_NAME,
-                Key=unique_file_name,
-                ExtraArgs={"ContentType": "application/pdf"}
-            )
-            print(f"File {unique_file_name} successfully uploaded to MinIO.")
+            await upload_to_storage(file_content, unique_file_name)
         except Exception as storage_err:
-            print(f"Storage Upload Error: {storage_err}")
+            logger.error(f"Storage Upload Error for {unique_file_name}: {storage_err}")
             raise HTTPException(
                 status_code=502, 
-                detail=f"Failed to upload file to storage server: {str(storage_err)}"
+                detail="Failed to upload file to storage server."
             )
         
         background_tasks.add_task(
@@ -77,8 +64,8 @@ async def upload_pdf(
             "file_name": unique_file_name
         }
         
-    except HTTPException as http_err:
-        raise http_err
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"Error during file upload: {e}")
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+        logger.error(f"Unexpected error during file upload: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An internal error occurred during upload.")

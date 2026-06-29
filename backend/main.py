@@ -1,4 +1,5 @@
 import os
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,20 +9,57 @@ from utils import limiter
 
 from routers import auth, chat, document
 from vector_store import SimpleVectorStore
-from database import initialize_pool, open_pool, close_pool
+from database import initialize_pool, open_pool, close_pool, get_db
+
+logger = logging.getLogger(__name__)
+
+async def init_general_tables():
+    async with get_db() as conn:
+        async with conn.cursor() as cur:
+            try:
+                await cur.execute("""
+                    CREATE TABLE IF NOT EXISTS users (
+                        id SERIAL PRIMARY KEY,
+                        username VARCHAR(50) UNIQUE NOT NULL,
+                        hashed_password VARCHAR(255) NOT NULL
+                    );
+                """)
+                
+                await cur.execute("""
+                    CREATE TABLE IF NOT EXISTS chat_messages (
+                        id SERIAL PRIMARY KEY,
+                        session_id UUID NOT NULL,
+                        username VARCHAR(50) NOT NULL,
+                        role VARCHAR(10) NOT NULL,
+                        content TEXT NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+                    );
+                """)
+                await conn.commit()
+                logger.info("General database tables initialized successfully.")
+            except Exception as e:
+                await conn.rollback()
+                logger.error(f"Failed to initialize general database tables: {e}", exc_info=True)
+                raise e
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     initialize_pool()
     await open_pool()
     
-    store = SimpleVectorStore()
     try:
         print("Initializing database tables...")
-        await store.init_db()
+        await init_general_tables()
+        
+        store = SimpleVectorStore()
+        await store.init_vector_table()
+        
         print("Database initialized successfully.")
     except Exception as e:
         print(f"Error initializing database: {e}")
+        logger.error(f"Critical error during startup: {e}", exc_info=True)
         
     yield
     
