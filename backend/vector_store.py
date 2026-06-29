@@ -58,13 +58,6 @@ class SimpleVectorStore:
                             FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
                         );
                     """)
-                    
-                    await cur.execute("""
-                        CREATE TABLE IF NOT EXISTS chat_titles (
-                            session_id UUID PRIMARY KEY,
-                            title VARCHAR(255) NOT NULL
-                        );
-                    """)
                     await conn.commit()
                 except Exception as e:
                     await conn.rollback()
@@ -165,25 +158,6 @@ class SimpleVectorStore:
                 rows = await cur.fetchall()
         return [{"role": row[0], "content": row[1], "created_at": row[2].isoformat()} for row in rows]
 
-    async def set_session_title(self, session_id: str, title: str):
-        """ذخیره یا آپدیت عنوان اختصاصی یک سشن"""
-        async with get_db() as conn:
-            async with conn.cursor() as cur:
-                try:
-                    await cur.execute(
-                        """
-                        INSERT INTO chat_titles (session_id, title) 
-                        VALUES (%s, %s)
-                        ON CONFLICT (session_id) DO UPDATE SET title = EXCLUDED.title;
-                        """,
-                        (session_id, title)
-                    )
-                    await conn.commit()
-                    print(f"--- Title saved to DB: {title} ---")
-                except Exception as e:
-                    await conn.rollback()
-                    print(f"Error saving chat title: {e}")
-
     async def get_user_sessions(self, username: str):
         async with get_db() as conn:
             async with conn.cursor() as cur:
@@ -204,16 +178,15 @@ class SimpleVectorStore:
                         )
                         SELECT 
                             sl.session_id, 
-                            COALESCE(t.title, SUBSTRING(sf.original_msg FROM 1 FOR 30)) as title
+                            sf.original_msg as title
                         FROM session_latest sl
                         LEFT JOIN session_first_msg sf ON sl.session_id = sf.session_id
-                        LEFT JOIN chat_titles t ON sl.session_id = t.session_id
-                        ORDER BY sl.last_activity DESC;
+                        ORDER BY sl.last_activity DESC;  -- اصلاح شد
                         """,
                         (username, username)
                     )
                     rows = await cur.fetchall()
-                    return [{"session_id": str(row[0]), "title": row[1]} for row in rows]
+                    return [{"session_id": str(row[0]), "title": row[1] if row[1] else "چت بدون پیام"} for row in rows]
                 except Exception as e:
                     print(f"Error fetching sessions: {e}")
                     return []
@@ -255,26 +228,3 @@ class SimpleVectorStore:
                     raise e
                     
         return file_names_to_delete
-    
-    async def update_session_title(self, session_id: str, username: str, new_title: str):
-        async with get_db() as conn:
-            async with conn.cursor() as cur:
-                try:
-                    await cur.execute(
-                        """
-                        UPDATE chat_messages 
-                        SET content = %s 
-                        WHERE id = (
-                            SELECT id FROM chat_messages 
-                            WHERE session_id = %s AND username = %s AND role = 'user'
-                            ORDER BY created_at ASC 
-                            LIMIT 1
-                        );
-                        """,
-                        (new_title, session_id, username)
-                    )
-                    await conn.commit()
-                    print(f"Session title updated to: '{new_title}'")
-                except Exception as e:
-                    await conn.rollback()
-                    print(f"Failed to update session title: {e}")
