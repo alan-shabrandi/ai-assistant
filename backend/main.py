@@ -65,7 +65,21 @@ async def lifespan(app: FastAPI):
     
     await close_pool()
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    title="AI-Powered RAG Chat Assistant",
+    description="""
+    An advanced, fully asynchronous Retrieval-Augmented Generation (RAG) API.
+    
+    ## 🚀 Features:
+    * **Auth**: Secure JWT Authentication via HttpOnly Cookies.
+    * **Document**: Non-blocking PDF text extraction, chunking, and storage.
+    * **Chat**: Semantic search via pgvector and streaming AI responses.
+    """,
+    version="1.0.0",
+    docs_url="/docs",      
+    redoc_url="/redoc",
+    lifespan=lifespan
+)
 
 app.state.limiter = limiter
 

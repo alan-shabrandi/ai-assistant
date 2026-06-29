@@ -1,11 +1,12 @@
 import logging
 import uuid
-from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Request, BackgroundTasks
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Request, BackgroundTasks, status
 from utils import limiter
 from security import get_current_user_from_cookie
 from vector_store import SimpleVectorStore
 
 from services.document_service import upload_to_storage, process_pdf_background
+from routers.document_docs import UPLOAD_PDF_DOCS
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,7 @@ def get_vector_store() -> SimpleVectorStore:
     return SimpleVectorStore()
 
 
-@router.post("/documents/upload")
+@router.post("/documents/upload", **UPLOAD_PDF_DOCS)
 @limiter.limit("3/minute")
 async def upload_pdf(
     request: Request,

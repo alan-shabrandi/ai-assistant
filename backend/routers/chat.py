@@ -16,6 +16,7 @@ from services.chat_service import (
     get_chat_history, 
     get_user_sessions 
 )
+from routers.chat_docs import CHAT_DOCS, GET_HISTORY_DOCS, GET_SESSIONS_DOCS, DELETE_SESSION_DOCS
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ def get_vector_store() -> SimpleVectorStore:
     return SimpleVectorStore()
 
 
-@router.post("/chat")
+@router.post("/chat", **CHAT_DOCS)
 @limiter.limit("5/minute")
 async def chat(
     request: Request,
@@ -74,7 +75,7 @@ async def chat(
     )
 
 
-@router.get("/chat/history")
+@router.get("/chat/history", **GET_HISTORY_DOCS)
 async def get_history(
     session_id: str,
     current_user: str = Depends(get_current_user_from_cookie),
@@ -95,7 +96,7 @@ async def get_history(
         raise HTTPException(status_code=500, detail="Internal server error fetching history")
 
 
-@router.get("/chat/sessions")
+@router.get("/chat/sessions", **GET_SESSIONS_DOCS)
 async def get_sessions(
     current_user: str = Depends(get_current_user_from_cookie)
 ):
@@ -107,7 +108,7 @@ async def get_sessions(
         raise HTTPException(status_code=500, detail="Internal server error fetching sessions")
 
 
-@router.delete("/chat/session/{session_id}")
+@router.delete("/chat/session/{session_id}", **DELETE_SESSION_DOCS)
 async def delete_session(
     session_id: str,
     current_user: str = Depends(get_current_user_from_cookie),
