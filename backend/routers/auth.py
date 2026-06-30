@@ -17,7 +17,7 @@ def set_auth_cookie(response: Response, token: str) -> None:
         value=token,
         httponly=True,
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        samesite="lax",
+        samesite="None",
         secure=True,
         path="/"
     )
