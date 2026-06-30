@@ -55,7 +55,7 @@ function LoginContent() {
       });
 
       localStorage.setItem("user_logged_in", "true");
-      location.reload();
+      // location.reload();
     } catch (err: any) {
       const serverErrorMessage =
         err.response?.data?.detail || err.response?.data?.message;
