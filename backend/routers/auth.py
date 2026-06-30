@@ -47,6 +47,13 @@ async def login(response: Response, form_data: OAuth2PasswordRequestForm = Depen
 
 
 @router.post("/logout", **LOGOUT_DOCS)
-async def logout(response: Response):
-    response.delete_cookie(key=COOKIE_NAME, path="/")
-    return {"message": "Logged out successfully"}
+def delete_auth_cookie(response: Response) -> None:
+    cookie_kwargs = {
+        "key": COOKIE_NAME,
+        "path": "/"
+    }
+    
+    if IS_PRODUCTION:
+        cookie_kwargs["domain"] = ".shabrandi.ir"
+        
+    response.delete_cookie(**cookie_kwargs)
