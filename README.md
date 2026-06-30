@@ -1,4 +1,4 @@
-[![Swagger API Docs](https://img.shields.io/badge/Swagger-API_Docs-green?style=for-the-badge&logo=swagger)](https://ai-assistant-0tto.onrender.com/docs)
+[![Swagger API Docs](https://img.shields.io/badge/Swagger-API_Docs-green?style=for-the-badge&logo=swagger)](https://api.shabrandi.ir/docs)
 
 # 🚀 AI-Powered RAG Chat Assistant (Fullstack)
 
@@ -122,10 +122,10 @@ frontend/
 
 ## 4. Access the Services
 
-| Service             | URL                                         |
-| ------------------- | ------------------------------------------- |
-| Frontend (Full App) | https://ai-assistant.shabrandi.ir           |
-| API Docs (Swagger)  | https://ai-assistant-0tto.onrender.com/docs |
+| Service             | URL                               |
+| ------------------- | --------------------------------- |
+| Frontend (Full App) | https://ai-assistant.shabrandi.ir |
+| API Docs (Swagger)  | https://api.shabrandi.ir/docs     |
 
 ---
 
