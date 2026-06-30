@@ -1,7 +1,7 @@
 import logging
 from fastapi import APIRouter, Depends, Response
 from fastapi.security import OAuth2PasswordRequestForm
-
+import os
 from config import COOKIE_NAME, ACCESS_TOKEN_EXPIRE_MINUTES
 from schemas import UserRegister
 from services.auth_service import register_user, authenticate_user
@@ -11,17 +11,26 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Authentication"])
 
 
+IS_PRODUCTION = os.getenv("ENV") == "production" 
+
 def set_auth_cookie(response: Response, token: str) -> None:
-    response.set_cookie(
-        key=COOKIE_NAME,
-        value=token,
-        httponly=True,
-        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        samesite="Lax",
-        secure=True,
-        domain=".shabrandi.ir",
-        path="/"
-    )
+    cookie_kwargs = {
+        "key": COOKIE_NAME,
+        "value": token,
+        "httponly": True,
+        "max_age": ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        "path": "/"
+    }
+    
+    if IS_PRODUCTION:
+        cookie_kwargs["samesite"] = "Lax"
+        cookie_kwargs["secure"] = True
+        cookie_kwargs["domain"] = ".shabrandi.ir"
+    else:
+        cookie_kwargs["samesite"] = "Lax"
+        cookie_kwargs["secure"] = False
+        
+    response.set_cookie(**cookie_kwargs)
 
 
 @router.post("/register", **REGISTER_DOCS)
