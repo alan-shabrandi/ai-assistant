@@ -12,9 +12,12 @@ def initialize_pool():
                 conninfo=DATABASE_URL,
                 min_size=5,
                 max_size=20,
-                open=False
+                open=False,
+                max_idle=300,
+                max_lifetime=1200,
+                check=AsyncConnectionPool.check_connection
             )
-            print("Async Database Connection Pool defined.")
+            print("Async Database Connection Pool defined with connection checkers.")
         except Exception as e:
             print(f"Error defining async connection pool: {e}")
             raise e
