@@ -112,6 +112,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/api/health", tags=["System"])
+async def health_check():
+    try:
+        async with get_db() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT 1;")
+        
+        return JSONResponse(
+            status_code=200,
+            content={"status": "healthy", "database": "connected"}
+        )
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"status": "unhealthy", "database": "disconnected", "error": str(e)}
+        )
+
 app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(document.router)
