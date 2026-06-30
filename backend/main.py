@@ -77,7 +77,7 @@ app = FastAPI(
     """,
     version="1.0.0",
     servers=[
-        {"url": "https://ai-assistant-murex-beta.vercel.app", "description": "Production Server"},
+        {"url": "https://ai-assistant.shabrandi.ir", "description": "Production Server"},
         {"url": "http://localhost:8000", "description": "Local Development"}
     ],
     docs_url="/docs",      
@@ -97,7 +97,7 @@ async def custom_rate_limit_exceeded_handler(request, exc):
 ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "https://ai-assistant-murex-beta.vercel.app"
+    "https://ai-assistant.shabrandi.ir"
 ]
 
 FRONTEND_URL = os.getenv("FRONTEND_URL")
