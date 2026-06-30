@@ -33,12 +33,10 @@ class SimpleVectorStore:
                     raise e
 
     async def get_embedding(self, text: str) -> list[float]:
-        from fastapi.concurrency import run_in_threadpool
-        
-        def _fetch():
-            return AI_CLIENT.embeddings.create(model=EMBEDDING_MODEL, input=text)
-            
-        response = await run_in_threadpool(_fetch)
+        response = await AI_CLIENT.embeddings.create(
+            model=EMBEDDING_MODEL, 
+            input=text
+        )
         return response.data[0].embedding
 
     async def add_documents(self, chunks: list[str], file_name: str, session_id: str):
