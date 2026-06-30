@@ -60,7 +60,7 @@ export default function Sidebar() {
       setSessions((prev) => prev.filter((s) => s.session_id !== sessionId));
 
       if (currentSessionId === sessionId) {
-        router.push("/chat");
+        handleNewChat();
       }
     } catch (error) {
       console.error("Error deleting session:", error);

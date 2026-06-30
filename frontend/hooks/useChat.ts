@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Message } from "@/components/chat/types";
 import { toast } from "sonner";
+import { apiClient } from "@/lib/api-client";
 
 export function useChat(sessionId: string) {
   const router = useRouter();
@@ -13,11 +14,16 @@ export function useChat(sessionId: string) {
 
   const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
 
+  const handleUnauthorized = () => {
+    localStorage.removeItem("user_logged_in");
+    router.push("/login");
+    router.refresh();
+  };
+
   const checkAuthOrRedirect = (): boolean => {
     const isUserLogged = localStorage.getItem("user_logged_in") === "true";
     if (!isUserLogged) {
-      localStorage.removeItem("user_logged_in");
-      router.push("/login");
+      handleUnauthorized();
       return false;
     }
     return true;
@@ -29,31 +35,21 @@ export function useChat(sessionId: string) {
         return;
 
       try {
-        const response = await fetch(
-          `${BACKEND_URL}/chat/history?session_id=${sessionId}`,
-          {
-            method: "GET",
-            credentials: "include",
-          },
-        );
+        const response = await apiClient.get(`/chat/history`, {
+          params: { session_id: sessionId },
+        });
 
-        if (response.status === 401) {
+        setMessages(response.data.history || []);
+        setHasFiles(response.data.has_files || false);
+      } catch (error: any) {
+        console.error("Failed to fetch chat history:", error);
+
+        if (error.response?.status === 401) {
           toast.error("Session expired. Please log in again.");
-          localStorage.removeItem("user_logged_in");
-          router.push("/login");
-          return;
-        }
-
-        if (response.ok) {
-          const data = await response.json();
-          setMessages(data.history || []);
-          setHasFiles(data.has_files || false);
+          handleUnauthorized();
         } else {
           toast.error("Failed to load chat history from server.");
         }
-      } catch (error) {
-        console.error("Failed to fetch chat history:", error);
-        toast.error("Network error: Could not load chat history.");
       }
     };
 
@@ -79,25 +75,21 @@ export function useChat(sessionId: string) {
         body: JSON.stringify({ message: text, session_id: sessionId }),
       });
 
-      if (response.status === 401) {
-        toast.error("Session expired. Please log in again.");
-        localStorage.removeItem("user_logged_in");
-        router.push("/login");
-        router.refresh();
-        throw new Error("Session expired.");
-      }
-
-      if (response.status === 429) {
-        toast.warning("Rate limit exceeded. Please wait a minute.");
-        throw new Error("Too many requests. Please slow down.");
-      }
-
-      if (response.status === 403) {
-        toast.error("Demo limit reached for this session.");
-        throw new Error("Session chat limit reached.");
-      }
-
       if (!response.ok) {
+        if (response.status === 401) {
+          toast.error("Session expired. Please log in again.");
+          handleUnauthorized();
+          throw new Error("Session expired.");
+        }
+        if (response.status === 429) {
+          toast.warning("Rate limit exceeded. Please wait a minute.");
+          throw new Error("Too many requests. Please slow down.");
+        }
+        if (response.status === 403) {
+          toast.error("Demo limit reached for this session.");
+          throw new Error("Session chat limit reached.");
+        }
+
         toast.error("Server encountered an error.");
         throw new Error("Request failed");
       }
@@ -119,11 +111,9 @@ export function useChat(sessionId: string) {
         buffer = lines.pop() || "";
 
         let currentChunkText = "";
-
         for (const line of lines) {
           if (line.startsWith("data: ")) {
-            const content = line.substring(6);
-            currentChunkText += content;
+            currentChunkText += line.substring(6);
           }
         }
 
@@ -141,13 +131,16 @@ export function useChat(sessionId: string) {
       }
     } catch (error: any) {
       console.error(error);
-      if (
-        error.message !== "Session expired." &&
-        error.message !== "Too many requests. Please slow down." &&
-        error.message !== "Session chat limit reached."
-      ) {
+      const standardErrors = [
+        "Session expired.",
+        "Too many requests. Please slow down.",
+        "Session chat limit reached.",
+      ];
+
+      if (!standardErrors.includes(error.message)) {
         toast.error("Failed to connect to the server.");
       }
+
       setMessages((prev) => [
         ...prev,
         {
@@ -171,29 +164,23 @@ export function useChat(sessionId: string) {
     const uploadToastId = toast.loading(`Uploading "${file.name}"...`);
 
     try {
-      const response = await fetch(`${BACKEND_URL}/documents/upload`, {
-        method: "POST",
-        credentials: "include",
-        body: formData,
+      await apiClient.post("/documents/upload", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
       });
 
-      if (response.status === 401) {
-        toast.error("Session expired.", { id: uploadToastId });
-        localStorage.removeItem("user_logged_in");
-        router.push("/login");
-        return;
-      }
-
-      if (!response.ok) {
-        toast.error("File processing failed on server.", { id: uploadToastId });
-        throw new Error("File upload failed.");
-      }
-
-      const data = await response.json();
       toast.success("Document processed successfully!", { id: uploadToastId });
       setHasFiles(true);
     } catch (error: any) {
       console.error(error);
+
+      if (error.response?.status === 401) {
+        toast.error("Session expired.", { id: uploadToastId });
+        handleUnauthorized();
+      } else {
+        toast.error("File processing failed on server.", { id: uploadToastId });
+      }
     } finally {
       setUploading(false);
     }

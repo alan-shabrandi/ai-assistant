@@ -1,4 +1,3 @@
-# app/routers/chat_docs.py
 from fastapi import status
 
 CHAT_DOCS = {

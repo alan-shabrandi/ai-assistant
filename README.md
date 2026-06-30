@@ -1,10 +1,12 @@
 [![Swagger API Docs](https://img.shields.io/badge/Swagger-API_Docs-green?style=for-the-badge&logo=swagger)](https://ai-assistant-0tto.onrender.com/docs)
 
-# 🚀 AI-Powered RAG Chat Assistant
+# 🚀 AI-Powered RAG Chat Assistant (Fullstack)
 
-### FastAPI + PostgreSQL (pgvector) + MinIO
+### FastAPI + Next.js + PostgreSQL (pgvector) + MinIO
 
-A production-ready, fully asynchronous **Retrieval-Augmented Generation (RAG)** system that enables intelligent conversations over uploaded PDF documents.
+A production-ready, fully asynchronous **Retrieval-Augmented Generation (RAG) fullstack system** for intelligent conversations over uploaded PDF documents.
+
+🔗 **Live Demo (Production):** https://ai-assistant.shabrandi.ir
 
 Users can upload PDF files, which are automatically:
 
@@ -13,16 +15,17 @@ Users can upload PDF files, which are automatically:
 - Embedded
 - Indexed into a vector database
 
-The AI model (via **OpenRouter** or **Local Ollama**) then retrieves the most relevant context and streams accurate responses in real time.
+The AI model (via **OpenRouter** or **Local Ollama**) retrieves the most relevant context and streams accurate responses in real time through a modern **Next.js frontend**.
 
-This project emphasizes **Clean Architecture**, modularity, scalability, and high concurrency to demonstrate modern backend development best practices.
+This project follows **Clean Architecture**, modular design principles, and production-grade async backend patterns.
 
 ---
 
 # ✨ Features
 
-- ⚡ **Fully Asynchronous Architecture**
-  - FastAPI
+- ⚡ **Fullstack Asynchronous System**
+  - Backend: FastAPI
+  - Frontend: Next.js
   - Async PostgreSQL (`psycopg` / `asyncpg`)
   - `AsyncOpenAI`
 
@@ -46,10 +49,10 @@ This project emphasizes **Clean Architecture**, modularity, scalability, and hig
 
 - 🚦 **Rate Limiting**
   - Powered by `slowapi`
-  - Protects against abuse and excessive LLM costs
+  - Prevents abuse and reduces LLM cost spikes
 
 - 🐳 **Dockerized Infrastructure**
-  - FastAPI
+  - FastAPI backend
   - PostgreSQL + pgvector
   - MinIO
   - One-command deployment
@@ -61,6 +64,7 @@ This project emphasizes **Clean Architecture**, modularity, scalability, and hig
 | Category         | Technology                                   |
 | ---------------- | -------------------------------------------- |
 | Backend          | FastAPI (Python 3.11+)                       |
+| Frontend         | Next.js                                      |
 | Database         | PostgreSQL                                   |
 | Vector Store     | pgvector                                     |
 | Object Storage   | MinIO / Supabase Storage (`boto3`)           |
@@ -92,6 +96,12 @@ app/
 └── services/
     ├── chat_service.py
     └── document_service.py
+
+frontend/
+├── app/
+├── components/
+├── lib/
+└── pages/
 ```
 
 ### File Responsibilities
@@ -110,70 +120,12 @@ app/
 
 ---
 
-# 🚀 Quick Start
-
-## 1. Clone the Repository
-
-```bash
-git clone https://github.com/alan-shabrandi/ai-assistant
-
-cd ai-assistant
-```
-
----
-
-## 2. Configure Environment Variables
-
-Create a `.env` file in the project root.
-
-```env
-JWT_SECRET_KEY=your_super_secret_jwt_key_here
-
-# PostgreSQL
-
-POSTGRES_USER=myuser
-POSTGRES_PASSWORD=mypassword
-POSTGRES_DB=mydb
-
-DATABASE_URL=postgresql+psycopg://myuser:mypassword@db:5432/mydb
-
-# OpenRouter
-
-OPENROUTER_API_KEY=your_openrouter_api_key_here
-
-# Ollama
-
-OLLAMA_BASE_URL=http://host.docker.internal:11434
-
-# MinIO
-
-MINIO_ROOT_USER=minioadmin
-MINIO_ROOT_PASSWORD=minioadmin
-
-MINIO_ENDPOINT=minio:9000
-MINIO_ACCESS_KEY=minioadmin
-MINIO_SECRET_KEY=minioadmin
-
-MINIO_BUCKET_NAME=pdf-bucket
-```
-
----
-
-## 3. Start the Infrastructure
-
-```bash
-docker-compose up --build
-```
-
----
-
 ## 4. Access the Services
 
-| Service       | URL                        |
-| ------------- | -------------------------- |
-| FastAPI       | http://localhost:8000      |
-| Swagger UI    | http://localhost:8000/docs |
-| MinIO Console | http://localhost:9001      |
+| Service             | URL                                         |
+| ------------------- | ------------------------------------------- |
+| Frontend (Full App) | https://ai-assistant.shabrandi.ir           |
+| API Docs (Swagger)  | https://ai-assistant-0tto.onrender.com/docs |
 
 ---
 

@@ -1,9 +1,9 @@
 "use client";
 
+import { Spinner } from "../ui/spinner";
 import ChatInput from "./ChatInput";
 import ChatMessage from "./ChatMessage";
 import EmptyState from "./EmptyState";
-import TypingIndicator from "./TypingIndicator";
 import { useChat } from "@/hooks/useChat";
 import { FileText } from "lucide-react";
 
@@ -45,10 +45,13 @@ export default function ChatArea({ sessionId }: ChatAreaProps) {
           ) : (
             <>
               {messages.map((message, index) => (
-                <ChatMessage key={index} message={message} />
+                <div className="relative" key={index}>
+                  {index === messages.length - 1 && loading && (
+                    <Spinner className="absolute -left-5 top-2.5" />
+                  )}
+                  <ChatMessage message={message} />
+                </div>
               ))}
-
-              {loading && <TypingIndicator />}
             </>
           )}
 

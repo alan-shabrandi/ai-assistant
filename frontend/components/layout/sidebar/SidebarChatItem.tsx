@@ -54,37 +54,39 @@ export function SidebarChatItem({
       </Button>
 
       <div className="absolute right-2 opacity-0 group-hover:opacity-100 transition-all duration-200 z-10 shrink-0 transform scale-95 group-hover:scale-100">
-        <ConfirmModal
-          title="Delete Chat"
-          description="Are you sure you want to delete this chat session and all associated conversation history? This action cannot be undone."
-          confirmText="Delete Chat"
-          variant="destructive"
-          onConfirm={() => onDelete(sessionId)}
-        >
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                className="h-7 w-7 p-0 rounded-md hover:bg-foreground/10 text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="w-36 shadow-md rounded-lg"
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              className="h-7 w-7 p-0 rounded-md hover:bg-foreground/10 text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreVertical className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+
+          <DropdownMenuContent
+            align="end"
+            className="w-36 shadow-md rounded-lg"
+          >
+            <ConfirmModal
+              title="Delete Chat"
+              description="Are you sure you want to delete this chat session and all associated conversation history? This action cannot be undone."
+              confirmText="Delete Chat"
+              variant="destructive"
+              onConfirm={() => onDelete(sessionId)}
             >
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive gap-2 cursor-pointer select-none py-1.5"
+                onSelect={(e) => e.preventDefault()}
                 onClick={(e) => e.stopPropagation()}
               >
                 <Trash2 className="h-4 w-4" />
                 <span className="text-xs font-medium">Delete</span>
               </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </ConfirmModal>
+            </ConfirmModal>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );
